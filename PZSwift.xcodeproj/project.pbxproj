@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E59802A224AEAD8100373123 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = E59802A124AEAD8100373123 /* ArgumentParser */; };
 		E5E9A7DD24AE655300C355B3 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E9A7DC24AE655300C355B3 /* main.swift */; };
 		E5E9A7E424AE656500C355B3 /* PZip.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E9A7E324AE656500C355B3 /* PZip.swift */; };
 		E5E9A7E724AE68E300C355B3 /* Gzip in Frameworks */ = {isa = PBXBuildFile; productRef = E5E9A7E624AE68E300C355B3 /* Gzip */; };
@@ -41,6 +42,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E59802A224AEAD8100373123 /* ArgumentParser in Frameworks */,
 				E5E9A7E724AE68E300C355B3 /* Gzip in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -118,6 +120,7 @@
 			name = PZSwift;
 			packageProductDependencies = (
 				E5E9A7E624AE68E300C355B3 /* Gzip */,
+				E59802A124AEAD8100373123 /* ArgumentParser */,
 			);
 			productName = PZSwift;
 			productReference = E5E9A7D924AE655300C355B3 /* PZSwift */;
@@ -172,6 +175,7 @@
 			mainGroup = E5E9A7D024AE655300C355B3;
 			packageReferences = (
 				E5E9A7E524AE68E300C355B3 /* XCRemoteSwiftPackageReference "GzipSwift" */,
+				E59802A024AEAD8100373123 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
 			);
 			productRefGroup = E5E9A7DA24AE655300C355B3 /* Products */;
 			projectDirPath = "";
@@ -413,6 +417,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		E59802A024AEAD8100373123 /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-argument-parser";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.2.0;
+			};
+		};
 		E5E9A7E524AE68E300C355B3 /* XCRemoteSwiftPackageReference "GzipSwift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/1024jp/GzipSwift";
@@ -424,6 +436,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		E59802A124AEAD8100373123 /* ArgumentParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E59802A024AEAD8100373123 /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
+			productName = ArgumentParser;
+		};
 		E5E9A7E624AE68E300C355B3 /* Gzip */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E5E9A7E524AE68E300C355B3 /* XCRemoteSwiftPackageReference "GzipSwift" */;

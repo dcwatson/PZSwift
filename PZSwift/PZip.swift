@@ -8,9 +8,8 @@
 import CommonCrypto
 import CryptoKit
 import Foundation
-import Security
 import Gzip
-
+import Security
 
 struct Flags: OptionSet {
     let rawValue: UInt8
@@ -108,7 +107,7 @@ public enum KeyDerivation: UInt8 {
             let keyData = hkdf_sha256(data, salt: tags[.Salt] ?? Data(), info: Data())
             return SymmetricKey(data: keyData!)
         case .PBKDF2_SHA256:
-            var iterations: UInt32 = 200000
+            var iterations: UInt32 = 200_000
             if let iterBytes = tags[.Iterations] {
                 iterations = iterBytes.readInt()
             }
@@ -119,7 +118,7 @@ public enum KeyDerivation: UInt8 {
 }
 
 public struct PZipHeader {
-    static let LAST_BLOCK = UInt32(0x80000000)
+    static let LAST_BLOCK = UInt32(0x8000_0000)
 
     var version: UInt8
     var flags: Flags
@@ -212,7 +211,7 @@ public struct Password: PZipKey {
     var material: Data
     var iterations: UInt32
 
-    init(_ password: String, iterations: UInt32 = 200000) {
+    init(_ password: String, iterations: UInt32 = 200_000) {
         material = password.data(using: .utf8)!
         self.iterations = iterations
     }
@@ -334,7 +333,7 @@ public class PZipReader {
         input = from
         buffer = Data()
         pzip = PZipHeader(from: from)
-        self.key = pzip.deriveKey(keyMaterial)
+        key = pzip.deriveKey(keyMaterial)
     }
 
     func readBlock() -> Data? {
@@ -342,7 +341,7 @@ public class PZipReader {
             return nil
         }
         let header: UInt32 = input.read(4).readInt()
-        let size = header & 0x00FFFFFF
+        let size = header & 0x00FF_FFFF
         eof = (header & PZipHeader.LAST_BLOCK) != 0
         var plaintext: Data
         if size > 0 {
@@ -425,19 +424,19 @@ func hkdf_sha256(_ seed: Data, salt: Data, info: Data, outputSize: Int = 32) -> 
     guard iterations <= 255 else {
         return nil
     }
-    
+
     let prk = HMAC<SHA256>.authenticationCode(for: seed, using: SymmetricKey(data: salt))
     let key = SymmetricKey(data: prk)
     var hkdf = Data()
     var value = Data()
-    
-    for i in 1...iterations {
+
+    for i in 1 ... iterations {
         value.append(info)
         value.append(i)
-        
+
         let code = HMAC<SHA256>.authenticationCode(for: value, using: key)
         hkdf.append(contentsOf: code)
-        
+
         value = Data(code)
     }
 
