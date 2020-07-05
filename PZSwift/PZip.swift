@@ -177,12 +177,17 @@ public struct PZipHeader {
         kdf.derive(data, tags: tags)
     }
 
-    func encrypt(_ data: Data, key: SymmetricKey, counter: Int) throws -> Data {
-        try algorithm.encrypt(data, key: key, tags: tags, counter: counter)
+    func encodeBlock(_ data: Data, key: SymmetricKey, counter: Int, last: Bool) throws -> Data {
+        let compressed = try compression.compress(data)
+        let block = try algorithm.encrypt(compressed, key: key, tags: tags, counter: counter)
+        var header = (UInt32(block.count) | (last ? PZipHeader.LAST_BLOCK : 0)).bigEndian
+        // Why does this not work??
+        // block.insert(contentsOf: Data(bytes: &header, count: 4), at: 0)
+        return Data(bytes: &header, count: 4) + block
     }
 
-    func decrypt(_ data: Data, key: SymmetricKey, counter: Int) throws -> Data {
-        try algorithm.decrypt(data, key: key, tags: tags, counter: counter)
+    func decodeBlock(_ data: Data, key: SymmetricKey, counter: Int) throws -> Data {
+        try compression.decompress(try algorithm.decrypt(data, key: key, tags: tags, counter: counter))
     }
 }
 
@@ -288,18 +293,10 @@ public class PZipWriter {
         if counter == 0 {
             output.write(pzip.data())
         }
-        if data.count > 0 {
-            let compressed = try! pzip.compression.compress(data)
-            let ciphertext = try! pzip.encrypt(compressed, key: key, counter: counter)
-            var header = (UInt32(ciphertext.count) | (last ? PZipHeader.LAST_BLOCK : 0)).bigEndian
-            output.write(Data(bytes: &header, count: 4))
-            output.write(ciphertext)
-            written += data.count
-            counter += 1
-        } else {
-            var header = last ? PZipHeader.LAST_BLOCK.bigEndian : UInt32(0)
-            output.write(Data(bytes: &header, count: 4))
-        }
+        let block = try! pzip.encodeBlock(data, key: key, counter: counter, last: last)
+        output.write(block)
+        written += data.count
+        counter += 1
     }
 
     func write<T: DataProtocol>(_ data: T) {
@@ -343,16 +340,9 @@ public class PZipReader {
         let header: UInt32 = input.read(4).readInt()
         let size = header & 0x00FF_FFFF
         eof = (header & PZipHeader.LAST_BLOCK) != 0
-        var plaintext: Data
-        if size > 0 {
-            let ciphertext = input.read(Int(size))
-            let compressed = try! pzip.decrypt(ciphertext, key: key, counter: counter)
-            plaintext = try! pzip.compression.decompress(compressed)
-            counter += 1
-            bytesRead += UInt64(plaintext.count)
-        } else {
-            plaintext = Data()
-        }
+        let plaintext = try! pzip.decodeBlock(input.read(Int(size)), key: key, counter: counter)
+        counter += 1
+        bytesRead += UInt64(plaintext.count)
         if eof {
             let checkSize: UInt64 = input.read(8).readInt()
             if checkSize != bytesRead {
@@ -383,6 +373,97 @@ public class PZipReader {
         let data = Data(buffer)
         buffer.removeAll()
         return data
+    }
+}
+
+class BlockBuffer {
+    var finished = Dictionary<Int, Data>()
+    var queue = DispatchQueue(label: "finished-queue")
+    var hasNext = DispatchSemaphore(value: 0)
+    var nextIndex = 0
+    var lastIndex = -1
+
+    func put(_ block: Data, index: Int) {
+        queue.async(flags: .barrier) {
+            self.finished[index] = block
+            self.lastIndex = max(self.lastIndex, index)
+            if index == self.nextIndex {
+                self.hasNext.signal()
+            }
+        }
+    }
+    
+    func done() {
+        put(Data(), index: lastIndex + 1)
+    }
+    
+    func next() -> Data? {
+        var block: Data?
+        hasNext.wait()
+        queue.sync {
+            block = self.finished.removeValue(forKey: self.nextIndex)
+            self.nextIndex += 1
+            if self.finished[self.nextIndex] != nil {
+                self.hasNext.signal()
+            }
+        }
+        return block?.count == 0 ? nil : block
+    }
+}
+
+class ParallelEncryptor {
+    var source: PZipSource
+    var writer: PZipWriter
+
+    init<K: PZipKey>(_ source: PZipSource, dest: PZipDestination, key: K, algorithm: Algorithm = .AES_GCM_256, compression: Compression = .GZIP, blockSize: Int = PZipWriter.DEFAULT_BLOCK_SIZE) {
+        self.source = source
+        self.writer = PZipWriter(dest, key: key, algorithm: algorithm, compression: compression, blockSize: blockSize)
+    }
+    
+    func encrypt() {
+        let buffer = BlockBuffer()
+        let maxThreads = DispatchSemaphore(value: ProcessInfo.processInfo.activeProcessorCount)
+        let queue = DispatchQueue.global(qos: .userInitiated)
+        let writers = DispatchGroup()
+        let encoders = DispatchGroup()
+        var counter = 0
+        var written: UInt64 = 0
+        // Write the PZip header.
+        self.writer.output.write(self.writer.pzip.data())
+        // Thread to write out finished blocks as they're available.
+        queue.async(group: writers) {
+            while let block = buffer.next() {
+                self.writer.output.write(block)
+            }
+        }
+        while true {
+            let chunk = self.source.read(self.writer.blockSize)
+            if chunk.count < 1 {
+                break
+            }
+            written += UInt64(chunk.count)
+            // Copy of counter for the async closure below.
+            let index = counter
+            // Only process maxThreads blocks at a time.
+            maxThreads.wait()
+            queue.async(group: encoders) {
+                let block = try! self.writer.pzip.encodeBlock(chunk, key: self.writer.key, counter: index, last: false)
+                buffer.put(block, index: index)
+                maxThreads.signal()
+            }
+            counter += 1
+        }
+        encoders.wait()
+        buffer.done()
+        writers.wait()
+        // Last block is empty, just the LAST_BLOCK flag in the header.
+        var header = PZipHeader.LAST_BLOCK.bigEndian
+        self.writer.output.write(Data(bytes: &header, count: 4))
+        // If the AppendLength flag is set, write the total plaintext length.
+        if self.writer.pzip.flags.contains(.AppendLength) {
+            var size = written.bigEndian
+            self.writer.output.write(Data(bytes: &size, count: 8))
+        }
     }
 }
 

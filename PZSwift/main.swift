@@ -48,11 +48,7 @@ struct PZipCLI: ParsableCommand {
                 let outpath = file.appending(".pz")
                 if FileManager.default.createFile(atPath: outpath, contents: nil, attributes: nil) {
                     if let outfile = FileHandle(forWritingAtPath: outpath) {
-                        let writer = PZipWriter(.File(file: outfile), key: key, compression: .GZIP)
-                        while let chunk = try infile.read(upToCount: PZipWriter.DEFAULT_BLOCK_SIZE) {
-                            writer.writeBlock(chunk)
-                        }
-                        writer.finalize()
+                        ParallelEncryptor(.File(file: infile), dest: .File(file: outfile), key: key, compression: .GZIP).encrypt()
                     }
                 }
             }
