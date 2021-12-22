@@ -38,10 +38,7 @@ struct PZipCLI: ParsableCommand {
                 let outpath = String(file.prefix(file.count - 3))
                 if FileManager.default.createFile(atPath: outpath, contents: nil, attributes: nil) {
                     if let outfile = FileHandle(forWritingAtPath: outpath) {
-                        let reader = PZipReader(.File(file: infile), keyMaterial: key.material)
-                        while let block = reader.readBlock() {
-                            outfile.write(block)
-                        }
+                        ParallelDecryptor(.File(file: infile), dest: .File(file: outfile), key: key.material).decrypt()
                     }
                 }
             } else {

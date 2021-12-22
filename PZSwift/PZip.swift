@@ -467,6 +467,55 @@ class ParallelEncryptor {
     }
 }
 
+class ParallelDecryptor {
+    var reader: PZipReader
+    var destination: PZipDestination
+
+    init(_ source: PZipSource, dest: PZipDestination, key: Data, blockSize: Int = PZipWriter.DEFAULT_BLOCK_SIZE) {
+        self.reader = PZipReader(source, keyMaterial: key)
+        self.destination = dest
+    }
+    
+    func decrypt() {
+        let buffer = BlockBuffer()
+        let maxThreads = DispatchSemaphore(value: ProcessInfo.processInfo.activeProcessorCount)
+        let queue = DispatchQueue.global(qos: .userInitiated)
+        let writers = DispatchGroup()
+        let decoders = DispatchGroup()
+        var counter = 0
+        // Thread to write out finished blocks as they're available.
+        queue.async(group: writers) {
+            while let block = buffer.next() {
+                self.destination.write(block)
+            }
+        }
+        while true {
+            let header: UInt32 = self.reader.input.read(4).readInt()
+            let chunk = self.reader.input.read(Int(header & 0x00FF_FFFF))
+            if chunk.count < 1 {
+                break
+            }
+            // Copy of counter for the async closure below.
+            let index = counter
+            // Only process maxThreads blocks at a time.
+            maxThreads.wait()
+            queue.async(group: decoders) {
+                let block = try! self.reader.pzip.decodeBlock(chunk, key: self.reader.key, counter: index)
+                buffer.put(block, index: index)
+                maxThreads.signal()
+            }
+            if (header & PZipHeader.LAST_BLOCK) != 0 {
+                // Don't read past the last block.
+                break
+            }
+            counter += 1
+        }
+        decoders.wait()
+        buffer.done()
+        writers.wait()
+    }
+}
+
 func pbkdf2_sha256(_ password: Data, salt: Data, iterations: Int, keyByteCount: Int = 32) -> Data? {
     var derivedKeyData = Data(repeating: 0, count: keyByteCount)
 
