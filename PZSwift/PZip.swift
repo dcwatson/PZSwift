@@ -14,7 +14,7 @@ import Security
 struct Flags: OptionSet {
     let rawValue: UInt8
 
-    static let AppendLength = Flags(rawValue: 1 << 0)
+    static let appendLength = Flags(rawValue: 1 << 0)
 }
 
 public enum Tag: UInt8 {
@@ -127,7 +127,7 @@ public struct PZipHeader {
     var compression: Compression
     var tags: PZipTags
 
-    init(version: UInt8 = 1, flags: Flags = [.AppendLength], algorithm: Algorithm = .AES_GCM_256, kdf: KeyDerivation, compression: Compression = .GZIP, tags: PZipTags = [:]) {
+    init(version: UInt8 = 1, flags: Flags = [.appendLength], algorithm: Algorithm = .AES_GCM_256, kdf: KeyDerivation, compression: Compression = .GZIP, tags: PZipTags = [:]) {
         self.version = version
         self.flags = flags
         self.algorithm = algorithm
@@ -310,7 +310,7 @@ public class PZipWriter {
 
     func finalize() {
         writeBlock(buffer, last: true)
-        if pzip.flags.contains(.AppendLength) {
+        if pzip.flags.contains(.appendLength) {
             var size = UInt64(written).bigEndian
             output.write(Data(bytes: &size, count: 8))
         }
@@ -343,7 +343,7 @@ public class PZipReader {
         let plaintext = try! pzip.decodeBlock(input.read(Int(size)), key: key, counter: counter)
         counter += 1
         bytesRead += UInt64(plaintext.count)
-        if eof {
+        if eof && pzip.flags.contains(.appendLength) {
             let checkSize: UInt64 = input.read(8).readInt()
             if checkSize != bytesRead {
                 print("size check failed", checkSize, bytesRead)
@@ -459,8 +459,8 @@ class ParallelEncryptor {
         // Last block is empty, just the LAST_BLOCK flag in the header.
         var header = PZipHeader.LAST_BLOCK.bigEndian
         self.writer.output.write(Data(bytes: &header, count: 4))
-        // If the AppendLength flag is set, write the total plaintext length.
-        if self.writer.pzip.flags.contains(.AppendLength) {
+        // If the appendLength flag is set, write the total plaintext length.
+        if self.writer.pzip.flags.contains(.appendLength) {
             var size = written.bigEndian
             self.writer.output.write(Data(bytes: &size, count: 8))
         }

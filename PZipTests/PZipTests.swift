@@ -28,7 +28,6 @@ class PZipTests: XCTestCase {
         writer.write(plaintext)
         writer.finalize()
         let data = output.property(forKey: .dataWrittenToMemoryStreamKey) as! Data
-        print(data.hexEncodedString())
 
         let input = InputStream(data: data)
         input.open()
